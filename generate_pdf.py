@@ -68,6 +68,14 @@ for line in lines:
     if not line.strip():
         pdf.ln(2)
         continue
+    if line.startswith("3. Training"):
+        # Add the block diagram before section 3
+        pdf.ln(10)
+        pdf.set_font('helvetica', 'I', 10)
+        pdf.cell(0, 10, 'Figure 1: FPGA Neural Network Hardware Architecture', 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
+        pdf.image("docs/block_diagram.png", x=25, w=160)
+        pdf.ln(10)
+    
     if line[0].isdigit() and "." in line[:3]:
         pdf.set_font('helvetica', 'B', 12)
         pdf.cell(0, 10, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
