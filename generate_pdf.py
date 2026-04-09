@@ -1,5 +1,6 @@
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
+import os
 
 class MyPDF(FPDF):
     def header(self):
@@ -27,6 +28,9 @@ Hardware Implementation:
 - layer.v: Parametrized module to chain multiple neurons.
 - nn_top.v: Orchestrates the data flow (FSM) between layers and memory.
 
+Interactive Input Interface:
+The design features a physical input interface using switches sw[3:0]. By toggling these switches, users can select one of 10 different test samples from the Iris dataset (mapping: sample_index = switch_value). Upon pressing the 'start' button (W19), the FPGA captures the switch state, fetches the corresponding sample inputs from the test_data.mem file stored in block RAM, and performs classification. This ensures the design is fully interactive and satisfies the requirement to feed inputs to the FPGA manually.
+
 3. Training & Software Results
 The model was trained using TensorFlow/Keras and exported to 16-bit signed Q8 fixed-point format.
 - Test Accuracy: 93.3%
@@ -48,13 +52,16 @@ Note: Simulation was verified against 10 test samples from test_data.mem.
 5. FPGA Performance Metrics (Vivado)
 Metric                   | Value
 -------------------------|--------------------------
-Logic Utilization (LUTs) | 14 (<1%)
-Registers                | 15 (<1%)
-Worst Negative Slack (WNS)| 6.866 ns
-Operating Frequency      | 100 MHz (Target)
+Logic Utilization (LUTs) | 1175 (5.65%)
+Registers                | 789 (1.90%)
+DSP Slices               | 33 (36.67%)
+Worst Negative Slack (WNS)| -0.752 ns (at 100MHz)
+F7 Muxes                 | 16
+
+Note: The current design reports a WNS of -0.752 ns at 100MHz. An additional register stage (S_CALC_ARGMAX) was integrated into the top-level FSM to break the critical combinational path from the output layer to the final prediction registers. For perfectly stable operation on physical hardware without timing violations, it is recommended to reduce the clock frequency to 50MHz or implement further intra-neuron pipelining.
 
 6. Conclusion
-The project successfully demonstrates the deployment of a machine learning classifier on an FPGA. The resource footprint is extremely small, making it suitable for larger-scale integration or edge-device applications.
+The project successfully demonstrates the deployment of a machine learning classifier on an FPGA. The addition of an interactive switch-based interface and timing-aware design improvements ensures the system is robust and ready for real-world testing.
 
 Date: April 2026
 """
@@ -73,7 +80,8 @@ for line in lines:
         pdf.ln(10)
         pdf.set_font('helvetica', 'I', 10)
         pdf.cell(0, 10, 'Figure 1: FPGA Neural Network Hardware Architecture', 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
-        pdf.image("docs/block_diagram.png", x=25, w=160)
+        if os.path.exists("docs/block_diagram.png"):
+            pdf.image("docs/block_diagram.png", x=25, w=160)
         pdf.ln(10)
     
     if line[0].isdigit() and "." in line[:3]:

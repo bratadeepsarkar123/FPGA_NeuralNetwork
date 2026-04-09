@@ -3,13 +3,14 @@
 // nn_top — FPGA Neural Network Top-Level (4 → 8 → 3)
 // Q8 Fixed-point (16-bit signed)
 //
-// Loads test inputs from test_data.mem, feeds them through hidden + output
-// layers, and produces a 2-bit predicted class via argmax.
+// Loads test inputs from test_data.mem. 
+// Uses switches [3:0] to select which of the 10 samples to classify.
 //
 module nn_top (
     input  wire        clk,
     input  wire        btn_rst,     // active-high reset (physical button)
     input  wire        start,       // pulse to begin inference
+    input  wire [3:0]  sw,          // 4 switches to select sample (0-9)
     output reg  [1:0]  predicted_class,  // 0, 1, or 2
     output reg         done         // high for 1 cycle when result is ready
 );
@@ -25,23 +26,21 @@ module nn_top (
     localparam S_WAIT_HIDDEN = 3'd2;
     localparam S_FEED_OUTPUT = 3'd3;
     localparam S_WAIT_OUTPUT = 3'd4;
-    localparam S_DONE        = 3'd5;
+    localparam S_CALC_ARGMAX = 3'd5; // New state to break timing path
+    localparam S_DONE        = 3'd6;
 
     reg [2:0] state;
-    reg [3:0] cycle_cnt;   // counts input cycles (max 8 for output layer)
+    reg [3:0] cycle_cnt;   
+    reg [3:0] sampled_sw;  // snap switches at start
+    wire [7:0] base_addr = (sampled_sw * 5); // 5 lines per sample (4 feats + 1 label)
 
     // ══════════════════════════════════════════════════════════════════════
     // Test Input Memory (loaded from .mem file)
     // ══════════════════════════════════════════════════════════════════════
     // test_data.mem has 50 lines: 10 samples × (4 inputs + 1 label)
-    // We use the first sample (lines 0–3) as the default test input.
-    reg [15:0] test_inputs [0:3];
+    reg [15:0] test_data_mem [0:49];
     initial begin
-        test_inputs[0] = 16'h0000;
-        test_inputs[1] = 16'h0000;
-        test_inputs[2] = 16'h0000;
-        test_inputs[3] = 16'h0000;
-        $readmemh("test_data.mem", test_inputs, 0, 3);
+        $readmemh("test_data.mem", test_data_mem);
     end
 
     // ══════════════════════════════════════════════════════════════════════
@@ -71,7 +70,7 @@ module nn_top (
     );
 
     // ══════════════════════════════════════════════════════════════════════
-    // Latch hidden outputs (needed to feed output layer sequentially)
+    // Latch hidden outputs
     // ══════════════════════════════════════════════════════════════════════
     reg [15:0] hidden_results [0:7];
     integer k;
@@ -84,8 +83,6 @@ module nn_top (
 
     // ══════════════════════════════════════════════════════════════════════
     // Output Layer (8 → 3)
-    // Uses 3 separate neurons (NOT a full "layer" module, since the
-    // layer module is parameterised for 4 inputs / 8 neurons).
     // ══════════════════════════════════════════════════════════════════════
     reg [15:0] w_out_mem [0:23];  // 3 neurons × 8 weights
     reg [15:0] b_out_mem [0:2];   // 3 biases
@@ -99,7 +96,7 @@ module nn_top (
     reg  [15:0] o_data_in;
     reg  [2:0]  o_input_idx;
     reg         o_last;
-    wire [15:0] o_out [0:2];      // output of each of the 3 neurons
+    wire [15:0] o_out [0:2];      
     wire [2:0]  o_valid;
 
     genvar g;
@@ -119,7 +116,7 @@ module nn_top (
         end
     endgenerate
 
-    wire o_all_valid = o_valid[0];  // all 3 finish together
+    wire o_all_valid = o_valid[0];
 
     // ══════════════════════════════════════════════════════════════════════
     // Main FSM
@@ -128,6 +125,7 @@ module nn_top (
         if (btn_rst) begin
             state          <= S_IDLE;
             cycle_cnt      <= 4'd0;
+            sampled_sw     <= 4'd0;
             done           <= 1'b0;
             predicted_class <= 2'd0;
             h_start        <= 1'b0;
@@ -139,7 +137,6 @@ module nn_top (
             o_input_idx    <= 3'd0;
             o_last         <= 1'b0;
         end else begin
-            // Default: deassert pulses
             h_start <= 1'b0;
             h_last  <= 1'b0;
             o_start <= 1'b0;
@@ -147,25 +144,20 @@ module nn_top (
             done    <= 1'b0;
 
             case (state)
-
                 S_IDLE: begin
                     if (start) begin
-                        state     <= S_FEED_HIDDEN;
-                        cycle_cnt <= 4'd0;
+                        sampled_sw <= sw; // Capture switch settings
+                        state      <= S_FEED_HIDDEN;
+                        cycle_cnt  <= 4'd0;
                     end
                 end
 
                 S_FEED_HIDDEN: begin
-                    // Feed test_inputs[0..3] to hidden layer over 4 cycles
-                    h_data_in   <= test_inputs[cycle_cnt[1:0]];
+                    // Use sampled_sw*5 as base offset to fetch 4 features
+                    h_data_in   <= test_data_mem[base_addr + cycle_cnt[1:0]];
                     h_input_idx <= cycle_cnt[1:0];
-
-                    if (cycle_cnt == 4'd0)
-                        h_start <= 1'b1;   // first input
-
-                    if (cycle_cnt == 4'd3)
-                        h_last <= 1'b1;    // last input
-
+                    if (cycle_cnt == 4'd0) h_start <= 1'b1;
+                    if (cycle_cnt == 4'd3) h_last  <= 1'b1;
                     if (cycle_cnt == 4'd3) begin
                         state     <= S_WAIT_HIDDEN;
                         cycle_cnt <= 4'd0;
@@ -175,7 +167,6 @@ module nn_top (
                 end
 
                 S_WAIT_HIDDEN: begin
-                    // Wait for hidden layer to produce valid outputs
                     if (h_valid) begin
                         state     <= S_FEED_OUTPUT;
                         cycle_cnt <= 4'd0;
@@ -183,16 +174,10 @@ module nn_top (
                 end
 
                 S_FEED_OUTPUT: begin
-                    // Feed hidden_results[0..7] to output neurons over 8 cycles
                     o_data_in   <= hidden_results[cycle_cnt[2:0]];
                     o_input_idx <= cycle_cnt[2:0];
-
-                    if (cycle_cnt == 4'd0)
-                        o_start <= 1'b1;   // first input
-
-                    if (cycle_cnt == 4'd7)
-                        o_last <= 1'b1;    // last input
-
+                    if (cycle_cnt == 4'd0) o_start <= 1'b1;
+                    if (cycle_cnt == 4'd7) o_last  <= 1'b1;
                     if (cycle_cnt == 4'd7) begin
                         state     <= S_WAIT_OUTPUT;
                         cycle_cnt <= 4'd0;
@@ -203,25 +188,28 @@ module nn_top (
 
                 S_WAIT_OUTPUT: begin
                     if (o_all_valid) begin
-                        // Argmax: find which of the 3 outputs is largest
-                        if (o_out[0] >= o_out[1] && o_out[0] >= o_out[2])
-                            predicted_class <= 2'd0;
-                        else if (o_out[1] >= o_out[0] && o_out[1] >= o_out[2])
-                            predicted_class <= 2'd1;
-                        else
-                            predicted_class <= 2'd2;
-
-                        done  <= 1'b1;
-                        state <= S_DONE;
+                        state <= S_CALC_ARGMAX;
                     end
                 end
 
-                S_DONE: begin
-                    // Stay here until next start pulse
-                    if (start)
-                        state <= S_IDLE;
+                S_CALC_ARGMAX: begin
+                    // Timing fix: Register the argmax result in a separate clock cycle
+                    if (o_out[0] >= o_out[1] && o_out[0] >= o_out[2])
+                        predicted_class <= 2'd0;
+                    else if (o_out[1] >= o_out[0] && o_out[1] >= o_out[2])
+                        predicted_class <= 2'd1;
+                    else
+                        predicted_class <= 2'd2;
+                    
+                    done  <= 1'b1;
+                    state <= S_DONE;
                 end
 
+                S_DONE: begin
+                    if (start) state <= S_IDLE;
+                end
+                
+                default: state <= S_IDLE;
             endcase
         end
     end
