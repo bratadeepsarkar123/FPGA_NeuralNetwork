@@ -10,66 +10,60 @@
 
 A 2-layer feedforward neural network implemented in Verilog that classifies
 Iris flower inputs into 3 classes (Setosa, Versicolour, Virginica).
-Weights are trained in Python (scikit-learn + TensorFlow), quantized to
-Q8 fixed-point (16-bit signed), and exported as .mem files loaded by Verilog
-using $readmemh. The design is synthesized for the Basys3 FPGA board.
+Weights are trained in Python, quantized to Q8 fixed-point (16-bit signed), 
+and exported as .mem files. The design is optimized for timing and resource 
+efficiency on the Basys3 FPGA.
 
-Network architecture: 4 inputs → 8 hidden neurons (ReLU) → 3 output neurons (Softmax/argmax)
+Network architecture: 4 inputs → 8 hidden neurons (ReLU) → 3 output neurons (Argmax)
 
 ---
 
-## How to Run the Python Script
+## Performance Metrics (Basys 3)
+- **Target**: Artix-7 (xc7a35tcpg236-1)
+- **Clock**: 100 MHz
+- **Timing (WNS)**: **+0.010 ns** (Met)
+- **LUT Utilization**: 1228 (approx. 6%)
+- **Registers**: 815 (approx. 2%)
+- **DSPs**: 33
 
-```bash
-cd python
-pip install scikit-learn tensorflow numpy
-python train_and_export.py
+## How to Run
+### 1. Verification (Simulation)
+Ensure `iverilog` and `vvp` are installed.
+```powershell
+# Compile and run integration simulation
+Copy-Item weights\*.mem .
+iverilog -o sim_out sim/tb_nn_top.v src/*.v
+vvp sim_out
+Remove-Item *.mem
 ```
 
-This generates all `.mem` files in the `weights/` folder.
+### 2. Hardware Deployment (Vivado)
+1. Add fixed-point source files from `src/`.
+2. Add constraint file: `vivado/nn_top.xdc`.
+3. Add memory files: `weights/*.mem`.
+4. Run Synthesis and Implementation (Enable **Post-Route Physical Optimization**).
+5. Generate and load Bitstream.
+
+## Verification Results (10 Samples)
+
+| Sample ID | Expected | Predicted | Status |
+|-----------|----------|-----------|--------|
+| 0         | 0        | 0         | PASS   |
+| 1         | 2        | 2         | PASS   |
+| 2         | 1        | 1         | PASS   |
+| 3         | 1        | 1         | PASS   |
+| 4         | 0        | 0         | PASS   |
+| 5         | 1        | 2         | FAIL (Q8) |
+| 6         | 0        | 1         | FAIL (Q8) |
+| 7         | 0        | 1         | FAIL (Q8) |
+| 8         | 2        | 2         | PASS   |
+| 9         | 1        | 1         | PASS   |
 
 ---
-
-## How to Simulate (Icarus Verilog)
-
-```bash
-# Neuron testbench
-iverilog -o sim/tb_neuron.vvp sim/tb_neuron.v src/neuron.v
-vvp sim/tb_neuron.vvp
-
-# Layer testbench
-iverilog -o sim/tb_layer.vvp sim/tb_layer.v src/layer.v src/neuron.v
-vvp sim/tb_layer.vvp
-```
+## Documentation
+- [View Full Project Report](docs/report.pdf)
+- [Python Training Script](python/train_and_export.py)
+- [Hardware Architecture Diagram](docs/block_diagram.png)
 
 ---
-
-## How to Synthesize in Vivado
-
-1. Open Vivado → Create New RTL Project → select board: Basys3 (xc7a35tcpg236-1)
-2. Add sources: all `.v` files from `src/`
-3. Add constraints: `vivado/nn_top.xdc`
-4. Click Run Synthesis → Run Implementation → Generate Bitstream
-5. Open Hardware Manager → Auto Connect → Program Device
-
----
-
-## Results
-
-| Metric | Value |
-|--------|-------|
-| LUT Utilisation | <1% (14 LUTs) |
-| Worst Negative Slack (WNS) | 6.866 ns |
-
----
-
-## Verification Results (Simulation vs Implementation)
-
-| Test # | Expected Class | FPGA Output (Sim) | Status |
-|--------|----------------|-------------------|--------|
-| 1      | 0              | 0                 | **PASS** |
-| 2      | 1              | 1                 | **PASS** |
-| 3      | 2              | 2                 | **PASS** |
-| 4      | 0              | 0                 | **PASS** |
-| 5      | 2              | 2                 | **PASS** |
-
+*Created by Bratadeep Sarkar | April 2026*

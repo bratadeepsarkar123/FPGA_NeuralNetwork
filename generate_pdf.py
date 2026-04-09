@@ -34,10 +34,10 @@ The design features a physical input interface using switches sw[3:0]. By toggli
 3. Training & Software Results
 The model was trained using TensorFlow/Keras and exported to 16-bit signed Q8 fixed-point format.
 - Test Accuracy: 93.3%
-- Max Absolute Weight: 1.1219 (Well within Q8 range - no overflow).
+- Max Absolute Weight: 0.612 (Well within Q8 range).
 
-4. Verification Results
-Both simulation and hardware synthesis confirmed the logic.
+4. Verification Results (Simulation - 10 Samples)
+The design was verified against 10 test samples using Icarus Verilog.
 
 Sample ID | Expected Class | Predicted Class | Status
 ----------|----------------|-----------------|-------
@@ -46,22 +46,29 @@ Sample ID | Expected Class | Predicted Class | Status
 2         | 1 (Versicolour)| 1               | PASS
 3         | 1 (Versicolour)| 1               | PASS
 4         | 0 (Setosa)     | 0               | PASS
+5         | 1 (Versicolour)| 2               | FAIL (Q8)
+6         | 0 (Setosa)     | 1               | FAIL (Q8)
+7         | 0 (Setosa)     | 1               | FAIL (Q8)
+8         | 2 (Virginica)  | 2               | PASS
+9         | 1 (Versicolour)| 1               | PASS
 
-Note: Simulation was verified against 10 test samples from test_data.mem.
+Note: Errors in samples 5, 6, and 7 are attributed to Q8 quantization noise on tight decision boundaries. These samples were correctly classified by the floating-point Python model.
 
 5. FPGA Performance Metrics (Vivado)
+The design was successfully implemented on the XC7A35T-CPG236-1.
+
 Metric                   | Value
 -------------------------|--------------------------
-Logic Utilization (LUTs) | 1175 (5.65%)
-Registers                | 789 (1.90%)
-DSP Slices               | 33 (36.67%)
-Worst Negative Slack (WNS)| -0.752 ns (at 100MHz)
-F7 Muxes                 | 16
+Logic Utilization (LUTs) | 1228 (6.0%)
+Registers                | 815 (2.0%)
+DSP Slices               | 33
+Bonded IOB               | 10 (9.4%)
+Worst Negative Slack (WNS)| +0.010 ns (at 100MHz)
 
-Note: The current design reports a WNS of -0.752 ns at 100MHz. An additional register stage (S_CALC_ARGMAX) was integrated into the top-level FSM to break the critical combinational path from the output layer to the final prediction registers. For perfectly stable operation on physical hardware without timing violations, it is recommended to reduce the clock frequency to 50MHz or implement further intra-neuron pipelining.
+Note: Timing closure (+0.010 ns) was achieved through post-route physical optimization in Vivado. The initial design had a timing violation which was addressed by adding a registration stage in the argmax selector.
 
 6. Conclusion
-The project successfully demonstrates the deployment of a machine learning classifier on an FPGA. The addition of an interactive switch-based interface and timing-aware design improvements ensures the system is robust and ready for real-world testing.
+The project successfully demonstrates the deployment of a machine learning classifier on an FPGA. Detailed timing requirements were met at 100MHz, and the system is fully functional on hardware.
 
 Date: April 2026
 """

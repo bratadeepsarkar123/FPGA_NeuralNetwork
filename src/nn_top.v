@@ -146,18 +146,25 @@ module nn_top (
             case (state)
                 S_IDLE: begin
                     if (start) begin
-                        sampled_sw <= sw; // Capture switch settings
-                        state      <= S_FEED_HIDDEN;
-                        cycle_cnt  <= 4'd0;
+                        sampled_sw  <= sw;
+                        state       <= S_FEED_HIDDEN;
+                        cycle_cnt   <= 4'd0;
+                        // Pre-fetch first input so it's ready when S_FEED_HIDDEN starts
+                        h_data_in   <= test_data_mem[sw * 5];
+                        h_input_idx <= 2'd0;
                     end
                 end
 
                 S_FEED_HIDDEN: begin
-                    // Use sampled_sw*5 as base offset to fetch 4 features
-                    h_data_in   <= test_data_mem[base_addr + cycle_cnt[1:0]];
-                    h_input_idx <= cycle_cnt[1:0];
                     if (cycle_cnt == 4'd0) h_start <= 1'b1;
                     if (cycle_cnt == 4'd3) h_last  <= 1'b1;
+                    
+                    // Fetch NEXT input (registered, so arrives next cycle)
+                    if (cycle_cnt < 4'd3)
+                        h_data_in <= test_data_mem[base_addr + cycle_cnt[1:0] + 1];
+                    
+                    h_input_idx <= cycle_cnt[1:0];
+
                     if (cycle_cnt == 4'd3) begin
                         state     <= S_WAIT_HIDDEN;
                         cycle_cnt <= 4'd0;
@@ -202,11 +209,7 @@ module nn_top (
                         predicted_class <= 2'd2;
                     
                     done  <= 1'b1;
-                    state <= S_DONE;
-                end
-
-                S_DONE: begin
-                    if (start) state <= S_IDLE;
+                    state <= S_IDLE; // Go back to IDLE to wait for next 'start'
                 end
                 
                 default: state <= S_IDLE;

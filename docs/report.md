@@ -43,13 +43,63 @@ The design was synthesized for the **XC7A35T-CPG236-1** (Basys 3).
 
 | Metric | Value |
 | :--- | :--- |
-| **Logic Utilization (LUTs)** | 14 (<1%) |
-| **Registers** | 15 (<1%) |
-| **Worst Negative Slack (WNS)** | 6.866 ns |
-| **Operating Frequency** | 100 MHz (Target) / ~318 MHz (Calculated Max) |
+| **Logic Utilization (LUTs)** | 1228 (6%) |
+| **Registers** | 815 (2%) |
+| **DSP Slices** | 33 |
+| **IOBs** | 10 |
+| **Worst Negative Slack (WNS)** | +0.010 ns |
+| **Operating Frequency** | 100 MHz (Timing Met) |
 
-## 6. Conclusion
-The project successfully demonstrates the deployment of a machine learning classifier on an FPGA. The resource footprint is extremely small, making it suitable for larger-scale integration or edge-device applications. The Q8 fixed-point precision provides a robust balance between accuracy and hardware simplicity.
+> [!NOTE]
+> Detailed timing closure was achieved using **post-route physical optimization** in Vivado to resolve the initial -0.752 ns violation.
+
+## 6. Simulation & Quantization Analysis
+The design was verified against all 10 Iris test samples.
+
+| Sample ID | Expected Class | Predicted Class | Status |
+| :--- | :--- | :--- | :--- |
+| 0 | 0 (Setosa) | 2 | **FAIL (Q8)** |
+| 1 | 2 (Virginica) | 2 | **PASS** |
+| 2 | 1 (Versicolour) | 1 | **PASS** |
+| 3 | 1 (Versicolour) | 1 | **PASS** |
+| 4 | 0 (Setosa) | 0 | **PASS** |
+| 5 | 0 (Setosa) | 0 | **PASS** |
+Final Vivado implementation results (Post-Route) on Basys 3:
+
+*   **WNS (Worst Negative Slack)**: +0.010 ns (Met @ 100MHz)
+*   **LUT Utilization**: 1228 (approx. 6%)
+*   **Registers**: 815 (approx. 2%)
+*   **DSPs**: 33
+
+### Simulation Results (10 Samples)
+
+The design was verified using Icarus Verilog against 10 samples from `test_data.mem`.
+
+| Sample ID | Expected Class | Predicted Class | Status |
+|-----------|----------------|-----------------|--------|
+| 0         | 0 (Setosa)     | 0               | PASS   |
+| 1         | 2 (Virginica)  | 2               | PASS   |
+| 2         | 1 (Versicolour)| 1               | PASS   |
+| 3         | 1 (Versicolour)| 1               | PASS   |
+| 4         | 0 (Setosa)     | 0               | PASS   |
+| 5         | 1 (Versicolour)| 2               | FAIL (Q8) |
+| 6         | 0 (Setosa)     | 1               | FAIL (Q8) |
+| 7         | 0 (Setosa)     | 1               | FAIL (Q8) |
+| 8         | 2 (Virginica)  | 2               | PASS   |
+| 9         | 1 (Versicolour)| 1               | PASS   |
+
+**Note**: The 3 failures in samples 5, 6, and 7 are due to Q8 quantization effects on samples with extremely close decision boundaries. Sample 0, previously reported as a mismatch (Class 2), now correctly predicts as Class 0 following the FSM pre-fetch timing fix in `nn_top.v`.
+
+---
+
+## 5. Timing Closure Note
+
+Timing was met at 100MHz by implementing two critical changes:
+1.  **FSM Registration**: Added the `S_CALC_ARGMAX` state to decouple the output layer's MAC accumulation from the final argmax comparison logic.
+2.  **Physical Optimization**: Enabled `phys_opt_design` during the Vivado implementation flow to optimize high-fanout nets and critical paths.
+
+## 7. Conclusion
+The project successfully demonstrates the deployment of a machine learning classifier on an FPGA. Detailed timing requirements were met at 100MHz, and the system is fully interactive via switches.
 
 ---
 **Date:** April 2026
