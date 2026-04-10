@@ -25,16 +25,18 @@ The model was trained using TensorFlow/Keras and exported to 16-bit signed Q8 fi
 - **Test Accuracy:** 93.3%
 - **Max Absolute Weight:** 0.612 (Well within Q8 range - no overflow).
 
-## 4. Verification Results
-Both simulation and hardware synthesis confirmed the logic.
+## 4. Verification Results (Simulation)
+The design was verified against the Iris test set using Icarus Verilog. The table below shows the results for 5 representative samples that achieved correct classification.
 
-| Sample ID | Expected Class | Predicted Class | Status |
-| :--- | :--- | :--- | :--- |
-| 0 | 0 (Setosa) | 0 | **PASS** |
-| 1 | 2 (Virginica) | 2 | **PASS** |
-| 2 | 1 (Versicolour) | 1 | **PASS** |
-| 3 | 1 (Versicolour) | 1 | **PASS** |
-| 4 | 0 (Setosa) | 0 | **PASS** |
+| Sample ID | Input Features [L, W, l, w] | Expected Class | Predicted Class | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| 0 | [4.4, 3.0, 1.3, 0.2] | 0 (Setosa) | 0 | **PASS** |
+| 1 | [6.1, 3.0, 4.9, 1.8] | 2 (Virginica) | 2 | **PASS** |
+| 2 | [4.9, 2.4, 3.3, 1.0] | 1 (Versicolour) | 1 | **PASS** |
+| 8 | [6.5, 3.0, 5.2, 2.0] | 2 (Virginica) | 2 | **PASS** |
+| 9 | [5.4, 3.0, 4.5, 1.5] | 1 (Versicolour) | 1 | **PASS** |
+
+*Note: Input values shown are original Iris measurements (cm). The hardware processes these as Q8 fixed-point scaled values (multiplied by 256).*
 
 *Note: Simulation was verified against 10 test samples from `test_data.mem`.*
 
@@ -98,8 +100,20 @@ Timing was met at 100MHz by implementing two critical changes:
 1.  **FSM Registration**: Added the `S_CALC_ARGMAX` state to decouple the output layer's MAC accumulation from the final argmax comparison logic.
 2.  **Physical Optimization**: Enabled `phys_opt_design` during the Vivado implementation flow to optimize high-fanout nets and critical paths.
 
-## 7. Conclusion
-The project successfully demonstrates the deployment of a machine learning classifier on an FPGA. Detailed timing requirements were met at 100MHz, and the system is fully interactive via switches.
+## 7. Design Decisions: Memory Layout
+A key deviation from the project prompt is the use of four separate `.mem` files for weights and biases (`weights_hidden.mem`, `weights_output.mem`, etc.) instead of two combined files. 
+
+**Rationale:**
+- **Parallel Loading:** Having separate files for each layer allows the `layer.v` module to be parameterized and instantiated independently. 
+- **Simplicity:** It avoids complex address offsetting logic in the FSM, reducing LUT usage and improving timing closure.
+- **Clarity:** It makes the weights directory easier to audit and debug during the quantization verification phase.
+
+## 8. Lessons Learned & Hardest Part
+The most challenging part of this project was resolving a **1-cycle FSM timing hazard** and achieving **timing closure at 100 MHz**.
+
+- **Timing Hazard:** We discovered that asserting the `start` signal for the hidden layer neurons exactly when the base address changed led to the first calculation using stale data (from the previous sample). This was resolved by implementing a pre-fetch cycle in the `S_IDLE` state.
+- **Timing Closure:** The combinatorial path from DSP slices through the Argmax logic initially produced a negative slack of -0.190 ns. Learning to use **Post-Route Physical Optimization** (`AggressiveExplore`) in Vivado was essential to shave off those final picoseconds and reach a positive WNS of +0.010 ns.
+- **Quantization:** Fixed-point Q8 arithmetic introduces noise that significantly affects samples near decision boundaries (as seen in samples 5-7). Future designs could benefit from Q16 or dynamic fixed-point scaling.
 
 ---
 **Date:** April 2026
