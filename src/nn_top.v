@@ -19,15 +19,17 @@ module nn_top (
     wire rst_n = !btn_rst;
 
     // ══════════════════════════════════════════════════════════════════════
-    // FSM States
+    // FSM State Encoding
+    // Inference follows: IDLE → FEED_HIDDEN → WAIT_HIDDEN →
+    //                    FEED_OUTPUT → WAIT_OUTPUT → CALC_ARGMAX → IDLE
     // ══════════════════════════════════════════════════════════════════════
-    localparam S_IDLE        = 3'd0;
-    localparam S_FEED_HIDDEN = 3'd1;
-    localparam S_WAIT_HIDDEN = 3'd2;
-    localparam S_FEED_OUTPUT = 3'd3;
-    localparam S_WAIT_OUTPUT = 3'd4;
-    localparam S_CALC_ARGMAX = 3'd5; // New state to break timing path
-    localparam S_DONE        = 3'd6;
+    localparam S_IDLE        = 3'd0; // Wait for 'start' pulse; pre-fetch first input
+    localparam S_FEED_HIDDEN = 3'd1; // Stream 4 input features to hidden layer neurons
+    localparam S_WAIT_HIDDEN = 3'd2; // Wait for hidden layer 'valid' signal
+    localparam S_FEED_OUTPUT = 3'd3; // Stream 8 hidden activations to output neurons
+    localparam S_WAIT_OUTPUT = 3'd4; // Wait for output layer 'valid' signal
+    localparam S_CALC_ARGMAX = 3'd5; // Register argmax result (dedicated state for timing closure)
+    localparam S_DONE        = 3'd6; // Currently unused; FSM returns directly to S_IDLE
 
     reg [2:0] state;
     reg [3:0] cycle_cnt;   
@@ -70,7 +72,9 @@ module nn_top (
     );
 
     // ══════════════════════════════════════════════════════════════════════
-    // Latch hidden outputs
+    // Latch Hidden Layer Outputs
+    // When the hidden layer asserts 'valid', capture all 8 neuron outputs
+    // into 'hidden_results'. These are fed to the output layer in S_FEED_OUTPUT.
     // ══════════════════════════════════════════════════════════════════════
     reg [15:0] hidden_results [0:7];
     integer k;
@@ -144,25 +148,35 @@ module nn_top (
             done    <= 1'b0;
 
             case (state)
+                // ── S_IDLE ──────────────────────────────────────────────────
+                // Waits for the 'start' pulse. Immediately pre-fetches the first
+                // feature word so h_data_in is valid (after its register stage)
+                // when S_FEED_HIDDEN asserts h_start on the very next cycle.
+                // This avoids a 1-cycle misalignment that caused stale-data bugs.
                 S_IDLE: begin
                     if (start) begin
-                        sampled_sw  <= sw;
+                        sampled_sw  <= sw;              // Snap switch selection
                         state       <= S_FEED_HIDDEN;
                         cycle_cnt   <= 4'd0;
-                        // Pre-fetch first input so it's ready when S_FEED_HIDDEN starts
-                        h_data_in   <= test_data_mem[sw * 5];
+                        h_data_in   <= test_data_mem[sw * 5]; // Pre-fetch feature[0]
                         h_input_idx <= 2'd0;
                     end
                 end
 
+                // ── S_FEED_HIDDEN ────────────────────────────────────────────
+                // Streams 4 input features (one per clock) to the hidden layer.
+                // h_start pulses on cycle 0 to begin each neuron's MAC chain.
+                // h_last pulses on cycle 3 to signal the final feature.
+                // Due to registered memory reads, we pre-fetch feature[i+1]
+                // so that it arrives on the correct cycle for feature[i+1].
                 S_FEED_HIDDEN: begin
-                    if (cycle_cnt == 4'd0) h_start <= 1'b1;
-                    if (cycle_cnt == 4'd3) h_last  <= 1'b1;
-                    
-                    // Fetch NEXT input (registered, so arrives next cycle)
+                    if (cycle_cnt == 4'd0) h_start <= 1'b1; // Kick off neurons
+                    if (cycle_cnt == 4'd3) h_last  <= 1'b1; // Signal last feature
+
+                    // Pre-fetch next feature (arrives registered on the following cycle)
                     if (cycle_cnt < 4'd3)
                         h_data_in <= test_data_mem[base_addr + cycle_cnt[1:0] + 1];
-                    
+
                     h_input_idx <= cycle_cnt[1:0];
 
                     if (cycle_cnt == 4'd3) begin
@@ -173,6 +187,10 @@ module nn_top (
                     end
                 end
 
+                // ── S_WAIT_HIDDEN ────────────────────────────────────────────
+                // Stall until the hidden layer's 'valid' flag goes high.
+                // The number of stall cycles equals the neuron pipeline depth
+                // (determined by NUM_INPUTS in layer.v).
                 S_WAIT_HIDDEN: begin
                     if (h_valid) begin
                         state     <= S_FEED_OUTPUT;
@@ -180,11 +198,14 @@ module nn_top (
                     end
                 end
 
+                // ── S_FEED_OUTPUT ────────────────────────────────────────────
+                // Streams 8 hidden-layer activations (from 'hidden_results')
+                // to the 3 output neurons. Same timing protocol as S_FEED_HIDDEN.
                 S_FEED_OUTPUT: begin
                     o_data_in   <= hidden_results[cycle_cnt[2:0]];
                     o_input_idx <= cycle_cnt[2:0];
-                    if (cycle_cnt == 4'd0) o_start <= 1'b1;
-                    if (cycle_cnt == 4'd7) o_last  <= 1'b1;
+                    if (cycle_cnt == 4'd0) o_start <= 1'b1; // Start output neurons
+                    if (cycle_cnt == 4'd7) o_last  <= 1'b1; // Signal last activation
                     if (cycle_cnt == 4'd7) begin
                         state     <= S_WAIT_OUTPUT;
                         cycle_cnt <= 4'd0;
@@ -193,23 +214,30 @@ module nn_top (
                     end
                 end
 
+                // ── S_WAIT_OUTPUT ────────────────────────────────────────────
+                // Wait for all 3 output neurons to finish their MAC computation.
+                // o_all_valid tracks neuron[0].valid as a proxy (all fire together).
                 S_WAIT_OUTPUT: begin
                     if (o_all_valid) begin
                         state <= S_CALC_ARGMAX;
                     end
                 end
 
+                // ── S_CALC_ARGMAX ────────────────────────────────────────────
+                // Registers the argmax comparison in a dedicated clock cycle.
+                // This decouples the DSP→Comparator→Register path from the
+                // output MAC chain, eliminating the −0.190 ns timing violation.
+                // The class with the highest Q8 logit value is the prediction.
                 S_CALC_ARGMAX: begin
-                    // Timing fix: Register the argmax result in a separate clock cycle
                     if (o_out[0] >= o_out[1] && o_out[0] >= o_out[2])
-                        predicted_class <= 2'd0;
+                        predicted_class <= 2'd0; // Iris Setosa
                     else if (o_out[1] >= o_out[0] && o_out[1] >= o_out[2])
-                        predicted_class <= 2'd1;
+                        predicted_class <= 2'd1; // Iris Versicolour
                     else
-                        predicted_class <= 2'd2;
-                    
-                    done  <= 1'b1;
-                    state <= S_IDLE; // Go back to IDLE to wait for next 'start'
+                        predicted_class <= 2'd2; // Iris Virginica
+
+                    done  <= 1'b1;    // Assert done for exactly 1 cycle
+                    state <= S_IDLE;  // Return to IDLE for next sample
                 end
                 
                 default: state <= S_IDLE;
