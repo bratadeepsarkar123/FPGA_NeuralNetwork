@@ -56,15 +56,32 @@ module tb_nn_top;
                 end
             end
 
+        begin : display_block
+            reg [1:0] expected;
+            case(i)
+                0: expected = 0;
+                1: expected = 2;
+                2: expected = 1;
+                3: expected = 1;
+                4: expected = 0;
+                5: expected = 1;
+                6: expected = 0;
+                7: expected = 0;
+                8: expected = 2;
+                9: expected = 1;
+                default: expected = 0;
+            endcase
+
             if (done) begin
-                // Note: This expects we know the labels. 
-                // For simplicity, I'll just print the predicted class.
-                // The labels in test_data.mem are at indices 4, 9, 14, ...
-                $display("   %0d   |     ?    |     %0d     |  DONE", i, predicted_class);
+                if (predicted_class == expected)
+                    $display("   %0d   |     %0d    |     %0d     |  PASS", i, expected, predicted_class);
+                else
+                    $display("   %0d   |     %0d    |     %0d     |  FAIL (Mismatch)", i, expected, predicted_class);
             end else begin
-                $display("   %0d   |     ?    |   TIMEOUT |  FAIL", i);
+                $display("   %0d   |     %0d    |   TIMEOUT |  FAIL (No Done)", i, expected);
             end
-            #100;
+        end
+        #100;
         end
 
         $display("========================================");
