@@ -27,7 +27,9 @@ set_property top nn_top [current_fileset]
 launch_runs synth_1 -jobs 4
 wait_on_run synth_1
 
-# --- Implementation ---
+# --- Implementation (with Post-Route Physical Opt for timing closure) ---
+set_property STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED true [get_runs impl_1]
+set_property STEPS.POST_ROUTE_PHYS_OPT_DESIGN.ARGS.DIRECTIVE AggressiveExplore [get_runs impl_1]
 launch_runs impl_1 -to_step write_bitstream -jobs 4
 wait_on_run impl_1
 
