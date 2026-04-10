@@ -78,9 +78,10 @@ The initial post-route WNS was **−0.190 ns** on the critical path:
 
 `DSP48E1 (MAC) → ReLU LUT → Output DSP48E1`
 
-Timing closure was achieved by two changes:
-1. **`S_CALC_ARGMAX` State:** Registered the argmax comparison result in a dedicated FSM state, removing it from the output layer's combinatorial critical path.
-2. **Post-Route Physical Optimization:** Enabled `phys_opt_design` with `AggressiveExplore` during Vivado implementation (`build.tcl`). This directive physically relocates high-fanout registers to reduce net delays by ~200 ps, achieving a final WNS of **+0.010 ns**.
+Timing closure was achieved via **Post-Route Physical Optimization** — enabled in `build.tcl` using the `AggressiveExplore` directive (`phys_opt_design`). This step physically relocates high-fanout registers and restructures critical net routing after place-and-route, shaving ~200 ps off the worst-case path to achieve a final **WNS = +0.010 ns**.
+
+> [!NOTE]
+> The `S_CALC_ARGMAX` FSM state was added for **functional correctness** (to fix a 1-cycle stale-data bug described in Section 7), **not** for timing closure. Timing was solved entirely by Post-Route Physical Optimization in Vivado.
 
 ---
 
