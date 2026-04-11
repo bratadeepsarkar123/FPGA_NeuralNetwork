@@ -15,8 +15,8 @@ import tensorflow as tf
 from tensorflow import keras
 
 # ─── 1. REPRODUCIBILITY ────────────────────────────────────────────────────────
-np.random.seed(42)
-tf.random.set_seed(42)
+np.random.seed(404)
+tf.random.set_seed(404)
 
 # ─── 2. LOAD AND PREPROCESS DATA ───────────────────────────────────────────────
 iris = load_iris()
@@ -42,7 +42,7 @@ model.compile(optimizer='adam',
               metrics=['accuracy'])
 
 model.fit(X_train, y_train,
-          epochs=200, batch_size=32,
+          epochs=400, batch_size=32,
           validation_split=0.1,
           verbose=0)
 

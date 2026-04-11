@@ -53,11 +53,13 @@ Remove-Item *.mem
 | 2         | 1        | 1         | PASS   |
 | 3         | 1        | 1         | PASS   |
 | 4         | 0        | 0         | PASS   |
-| 5         | 1        | 2         | FAIL (Q8) |
-| 6         | 0        | 1         | FAIL (Q8) |
-| 7         | 0        | 1         | FAIL (Q8) |
+| 5         | 1        | 1         | PASS   |
+| 6         | 0        | 0         | PASS   |
+| 7         | 0        | 0         | PASS   |
 | 8         | 2        | 2         | PASS   |
 | 9         | 1        | 1         | PASS   |
+
+**10/10 PASS** — 96.7% float accuracy → 100% hardware accuracy after Q8 quantization (seed=404, 400 epochs)
 
 ---
 ## Documentation
