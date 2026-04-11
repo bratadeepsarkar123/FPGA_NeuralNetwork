@@ -21,9 +21,9 @@ Network architecture: 4 inputs → 8 hidden neurons (ReLU) → 3 output neurons 
 ## Performance Metrics (Basys 3)
 - **Target**: Artix-7 (xc7a35tcpg236-1)
 - **Clock**: 100 MHz
-- **Timing (WNS)**: **+0.010 ns** (Met)
-- **LUT Utilization**: 1228 (approx. 6%)
-- **Registers**: 815 (approx. 2%)
+- **Timing (WNS)**: **+0.018 ns** (Met)
+- **LUT Utilization**: 1218 (approx. 6%)
+- **Registers**: 814 (approx. 2%)
 - **DSPs**: 33
 
 ## How to Run

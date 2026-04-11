@@ -68,11 +68,11 @@ The design was synthesized and implemented for the **XC7A35T-CPG236-1** (Basys 3
 
 | Metric | Value |
 | :--- | :--- |
-| **Logic Utilization (LUTs)** | 1228 / 20800 **(6%)** |
-| **Flip-Flops (Registers)** | 815 / 41600 **(2%)** |
+| **Logic Utilization (LUTs)** | 1218 / 20800 **(6%)** |
+| **Flip-Flops (Registers)** | 814 / 41600 **(2%)** |
 | **DSP Slices** | 33 / 90 **(37%)** |
 | **I/O Blocks (IOBs)** | 10 |
-| **Worst Negative Slack (WNS)** | **+0.010 ns** |
+| **Worst Negative Slack (WNS)** | **+0.018 ns** |
 | **Operating Frequency** | **100 MHz — Timing Met ✅** |
 
 ### Timing Closure Notes
@@ -80,7 +80,7 @@ The initial post-route WNS was **−0.190 ns** on the critical path:
 
 `DSP48E1 (MAC) → ReLU LUT → Output DSP48E1`
 
-Timing closure was achieved via **Post-Route Physical Optimization** — enabled in `build.tcl` using the `AggressiveExplore` directive (`phys_opt_design`). This step physically relocates high-fanout registers and restructures critical net routing after place-and-route, shaving ~200 ps off the worst-case path to achieve a final **WNS = +0.010 ns**.
+Timing closure was achieved via **Post-Route Physical Optimization** — enabled in `build.tcl` using the `AggressiveExplore` directive (`phys_opt_design`). This step physically relocates high-fanout registers and restructures critical net routing after place-and-route, shaving ~200 ps off the worst-case path to achieve a final **WNS = +0.018 ns**.
 
 > [!NOTE]
 > The `S_CALC_ARGMAX` FSM state was added for **functional correctness** (to fix a 1-cycle stale-data bug described in Section 7), **not** for timing closure. Timing was solved entirely by Post-Route Physical Optimization in Vivado.
