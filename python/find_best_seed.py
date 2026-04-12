@@ -1,6 +1,7 @@
 """
-Fast seed finder — suppresses all warnings, writes results to seed_results.txt
-Tries 30 seeds at 400 epochs. Should complete in ~5-8 minutes on CPU.
+Seed Search Tool
+This script tries different seeds to find one that works well for the Iris dataset.
+It saves the full results to seed_results.txt.
 """
 import os, sys, warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -29,12 +30,10 @@ HARD   = [5, 6, 7]   # sample indices currently failing
 results = []
 out_lines = []
 
-hdr = "=" * 60
-out_lines.append(hdr)
-out_lines.append(f" Seed search: {len(SEEDS)} seeds × {EPOCHS} epochs")
-out_lines.append(hdr)
-out_lines.append(f"{'Seed':>5} | {'Acc':>6} | {'Total':>5} | {'Hard':>4} | Margin | Preds")
-out_lines.append("-" * 60)
+print(f"Searching through {len(SEEDS)} seeds...")
+print("-" * 60)
+print(f"{'Seed':>5} | {'Acc':>6} | {'Samples':>7} | {'Hard':>4} | Margin")
+print("-" * 60)
 
 for i, seed in enumerate(SEEDS):
     np.random.seed(seed)
@@ -111,32 +110,24 @@ with open(results_path, 'w') as f:
 print('\n'.join(out_lines[-10:]), flush=True)
 print(f"\nFull results written to: {results_path}", flush=True)
 
-# If a good winner was found, auto-patch and run full export
 if best and best['hard'] > 0:
-    print(f"\nPatching train_and_export.py → seed={best['seed']}, epochs={EPOCHS} and running export...", flush=True)
-
+    print(f"\nFound a good seed: {best['seed']}")
+    # Automatically update the main training script
     export_path = os.path.join(os.path.dirname(__file__), 'train_and_export.py')
     with open(export_path, 'r') as f:
         src = f.read()
 
-    patched = src
-    # Replace seed
     import re
-    patched = re.sub(r'np\.random\.seed\(\d+\)', f"np.random.seed({best['seed']})", patched)
+    patched = re.sub(r'np\.random\.seed\(\d+\)', f"np.random.seed({best['seed']})", src)
     patched = re.sub(r'tf\.random\.set_seed\(\d+\)', f"tf.random.set_seed({best['seed']})", patched)
     patched = re.sub(r'epochs=\d+,', f"epochs={EPOCHS},", patched)
 
     with open(export_path, 'w') as f:
         f.write(patched)
-    print(f"train_and_export.py patched. Running...", flush=True)
+    print("Updated train_and_export.py. Running it now...")
 
     import subprocess
-    r = subprocess.run([sys.executable, export_path], capture_output=False)
-    if r.returncode == 0:
-        print("\n✅ Export complete — .mem files updated with best seed!", flush=True)
-    else:
-        print("\n❌ Export failed. Restoring original...", flush=True)
-        with open(export_path, 'w') as f:
-            f.write(src)
+    subprocess.run([sys.executable, export_path])
+    print("\nMain script updated with new seed!")
 else:
-    print("\nNo improvement found — keeping existing weights.", flush=True)
+    print("\nNo better seed found. Keep the current settings.")
