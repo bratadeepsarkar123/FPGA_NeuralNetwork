@@ -56,8 +56,8 @@ module layer #(
         end
     endgenerate
 
-    // All neurons run the same number of cycles, so they all finish together.
-    // Use neuron 0's valid as the layer valid (AND with others for safety).
+    // All neurons receive the same start/last signals and run in lockstep,
+    // so they all finish on the same cycle. Neuron 0's valid is sufficient.
     assign valid_layer = neuron_valid[0];
 
 endmodule

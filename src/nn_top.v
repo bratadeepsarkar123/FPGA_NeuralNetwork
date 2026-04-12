@@ -23,18 +23,17 @@ module nn_top (
     // Inference follows: IDLE → FEED_HIDDEN → WAIT_HIDDEN →
     //                    FEED_OUTPUT → WAIT_OUTPUT → CALC_ARGMAX → IDLE
     // ══════════════════════════════════════════════════════════════════════
-    localparam S_IDLE        = 3'd0; // Wait for 'start' pulse; pre-fetch first input
-    localparam S_FEED_HIDDEN = 3'd1; // Stream 4 input features to hidden layer neurons
-    localparam S_WAIT_HIDDEN = 3'd2; // Wait for hidden layer 'valid' signal
-    localparam S_FEED_OUTPUT = 3'd3; // Stream 8 hidden activations to output neurons
-    localparam S_WAIT_OUTPUT = 3'd4; // Wait for output layer 'valid' signal
-    localparam S_CALC_ARGMAX = 3'd5; // Register argmax result (dedicated state for timing closure)
-    localparam S_DONE        = 3'd6; // Currently unused; FSM returns directly to S_IDLE
+    localparam S_IDLE        = 3'd0;
+    localparam S_FEED_HIDDEN = 3'd1;
+    localparam S_WAIT_HIDDEN = 3'd2;
+    localparam S_FEED_OUTPUT = 3'd3;
+    localparam S_WAIT_OUTPUT = 3'd4;
+    localparam S_CALC_ARGMAX = 3'd5;
 
     reg [2:0] state;
     reg [3:0] cycle_cnt;   
     reg [3:0] sampled_sw;  // snap switches at start
-    wire [7:0] base_addr = (sampled_sw * 5); // 5 lines per sample (4 feats + 1 label)
+    wire [7:0] base_addr = sampled_sw * 5;
 
     // ══════════════════════════════════════════════════════════════════════
     // Test Input Memory (loaded from .mem file)
